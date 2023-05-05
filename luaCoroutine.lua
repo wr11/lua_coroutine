@@ -1,5 +1,96 @@
 local _ENV = moduleDef("coFuture", {})
 
+-- 字符串分割（正则无效）
+function split(str, delimiter, isToNumber, maxSplit)
+    maxSplit = maxSplit or #str
+    local result = {}
+    local from  = 1
+    local v
+    local cSplit = 0
+    local delim_from, delim_to = string.find(str, delimiter, from, true)
+    while delim_from and cSplit < maxSplit do
+        v = string.sub(str, from , delim_from-1 )
+        if isToNumber then
+            v = tonumber(v)
+        end
+        table.insert(result, v)
+        cSplit = cSplit + 1
+        from  = delim_to + 1
+        delim_from, delim_to = string.find( str, delimiter, from, true)
+    end
+    v = string.sub( str, from)
+    if isToNumber then
+        v = tonumber(v) 
+    end
+    table.insert(result, v)
+    return result
+end
+
+local function __initClass(cls)
+	local cls_mt = {__index = cls}
+	function cls:new(...)
+		local o = {}
+		setmetatable(o, cls_mt)
+		if cls.ctor ~= nil then
+			o:ctor(...)
+		end
+		return o
+	end
+end
+
+--[[
+	
+classDef("TestCls", {
+	staticVar1 = 100,
+	staticVar2 = "kaka"
+})
+
+-- 类的构造方法
+function TestCls:ctor(p1, p2)
+	self.var1 = p1
+	self.var2 = p2
+end
+
+function TestCls:func1()
+	print("member func", self.var1, self.var2, TestCls.staticVar1, TestCls.staticVar2)
+end
+
+----------------------
+-- 外部调用
+
+local inst = TestCls:new(1, 2)
+inst:func1()
+
+]]
+function classDef(sClsName, cls)
+	if not _G[sClsName] then
+		if type(cls) == "table" then
+			_G[sClsName] = cls
+		elseif type(cls) == "function" then
+			_G[sClsName] = cls()
+		else
+			assert(cls == nil)
+			_G[sClsName] = {}
+		end
+
+		__initClass(_G[sClsName])
+
+	end
+	return _G[sClsName]
+end
+
+function createClass()
+	local cls = {}
+	__initClass(cls)
+	return cls
+end
+
+function classDefCopyTable(tCls, tParentCls)
+    for k, v in pairs(tParentCls) do
+        tCls[k] = v
+    end
+end
+
 COROUTINE_DEAD_DESC = "cannot resume dead coroutine"
 
 local unpack = unpack or table.unpack
@@ -338,7 +429,7 @@ function waitMultiFuture(tFutures)
 end
 
 function coMessager(sendFunc, sRecvFuncName, ...)
-    local tRecvFuncName = StringUtil.split(sRecvFuncName, '.')
+    local tRecvFuncName = split(sRecvFuncName, '.')
     local sModuleName, sFuncName = tRecvFuncName[1], tRecvFuncName[2]
     if sModuleName and sFuncName and sModuleName ~= "" and sFuncName ~= "" then
         local oFuture = Future:new()
