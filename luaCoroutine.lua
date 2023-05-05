@@ -449,6 +449,68 @@ function coYieldUnpack(oFuture)
     return safeUnpack(tArgs)
 end
 
+function getWeakRefRole(nRoleId)
+    local tWeakRef = {}
+    local tMeta = {__mode = 'v'}
+    setmetatable(tWeakRef, tMeta)
+    tWeakRef.tRole = RoleMod.getRole(nRoleId)
+    return tWeakRef
+end
+
+function isWeakRefRoleExit(tWeakRef)
+    if not tWeakRef.tRole then
+        return false
+    else
+        return true
+    end
+end
+
+_G.getWeakRefRole = getWeakRefRole
+_G.isWeakRefRoleExit = isWeakRefRoleExit
+
+_G.waitMultiFuture = waitMultiFuture
 _G.coYieldUnpack = coYieldUnpack
 _G.coMessager = coMessager
 _G.coFuture = coFuture
+
+-- exmaple: 
+
+-- 1. 协议/rpc回调 c->s->c
+-- client:
+-- function trueGmFuture()
+--     return coFuture(function()
+--         local nID = coYieldUnpack(coMessager(Messager.SeriesEventSvrMod.testsvr, "SeriesEventCltMod.testclt", 121))
+--     end)
+-- end
+
+-- server:
+-- function testsvr(nRoleId, nID)
+--     Messager.SeriesEventCltMod.testclt(nRoleId, 38)
+-- end
+
+-- 2. 异步函数返回
+-- function trueGmFuture()
+--     return coFuture(function()
+--         local nID = coYieldUnpack(coMessager(Messager.SeriesEventSvrMod.testsvr, "SeriesEventCltMod.testclt", 121))
+--         error(Return:new(nID))
+--     end)
+-- end
+
+-- function gmFuture()
+--     return coFuture(function()
+--         local a = coYieldUnpack(trueGmFuture())
+--     end)
+-- end
+
+-- 3. 异步加载回调
+-- function load()
+--     local oFuture = Future:new()
+--     xxxx.load(function(data)
+--         oFuture.set_result(data)
+--     end)
+--     local data = coYieldUnpack(oFuture)
+--     ...
+-- end
+
+-- 注意：服务端使用协程时不可以将玩家对象传入，会影响玩家下线是对象的卸载，这里提供了getWeakRefRole来获取玩家对象的弱引用
+--     每次异步后需要通过接口isWeakRefRoleExit判断玩家对象是否还存在
