@@ -90,7 +90,6 @@ function classDefCopyTable(tCls, tParentCls)
         tCls[k] = v
     end
 end
-
 COROUTINE_DEAD_DESC = "cannot resume dead coroutine"
 
 local unpack = unpack or table.unpack
@@ -192,8 +191,8 @@ function Future:_set_done()
     self._callbacks = nil
 end
 
-function Future:set_result(result)
-    self._result = result
+function Future:set_result(...)
+    self._result = safePack(...)
     self:_set_done()
 end
 
@@ -299,7 +298,7 @@ function Runner:run()
             end, function(oError, nLv)
                 coroutine.close(self.coroutine)
             end)
-            local bStatus, yielded = coroutine.resume(self.coroutine, value)
+            local bStatus, yielded = coroutine.resume(self.coroutine, safeUnpack(value))
             if not bStatus then
                 if yielded == COROUTINE_DEAD_DESC then
                     self.finished = true
@@ -310,7 +309,7 @@ function Runner:run()
                 elseif type(yielded) == "table" and yielded.exception_type and yielded.exception_type == EXCEPTION_TYPE_RETURN then
                     self.finished = true
                     self.future = _null_future
-                    self.result_future:set_result(yielded.value)
+                    self.result_future:set_result(safeUnpack(yielded.value))
                     self.result_future = nil
                     return
                 elseif type(yielded) == "table" and yielded.exception_type and yielded.exception_type == EXCEPTION_TYPE_CANCELLED then
@@ -368,7 +367,7 @@ function coFuture(func, ...)
 
     if not bStatus then
         if type(result) == "table" and result.exception_type and result.exception_type == EXCEPTION_TYPE_RETURN then
-            trueResult = result.value
+            trueResult = safeUnpack(result.value)
         else
             future:set_exc_info(result)
 			return future
@@ -434,8 +433,7 @@ function coMessager(sendFunc, sRecvFuncName, ...)
     if sModuleName and sFuncName and sModuleName ~= "" and sFuncName ~= "" then
         local oFuture = Future:new()
         _G[sModuleName][sFuncName] = function(...)
-            local tArgs = safePack(...)
-            oFuture:set_result(tArgs)
+            oFuture:set_result(...)
         end
         sendFunc(...)
         return oFuture
@@ -444,9 +442,8 @@ function coMessager(sendFunc, sRecvFuncName, ...)
     end
 end
 
-function coYieldUnpack(oFuture)
-    local tArgs = coroutine.yield(oFuture)
-    return safeUnpack(tArgs)
+function coyield(oFuture)
+    return coroutine.yield(oFuture)
 end
 
 function getWeakRefRole(nRoleId)
@@ -469,7 +466,7 @@ _G.getWeakRefRole = getWeakRefRole
 _G.isWeakRefRoleExit = isWeakRefRoleExit
 
 _G.waitMultiFuture = waitMultiFuture
-_G.coYieldUnpack = coYieldUnpack
+_G.coyield = coyield
 _G.coMessager = coMessager
 _G.coFuture = coFuture
 
@@ -479,7 +476,7 @@ _G.coFuture = coFuture
 -- client:
 -- function trueGmFuture()
 --     return coFuture(function()
---         local nID = coYieldUnpack(coMessager(Messager.SeriesEventSvrMod.testsvr, "SeriesEventCltMod.testclt", 121))
+--         local nID = coyield(coMessager(Messager.SeriesEventSvrMod.testsvr, "SeriesEventCltMod.testclt", 121))
 --     end)
 -- end
 
@@ -491,14 +488,14 @@ _G.coFuture = coFuture
 -- 2. 异步函数返回
 -- function trueGmFuture()
 --     return coFuture(function()
---         local nID = coYieldUnpack(coMessager(Messager.SeriesEventSvrMod.testsvr, "SeriesEventCltMod.testclt", 121))
+--         local nID = coyield(coMessager(Messager.SeriesEventSvrMod.testsvr, "SeriesEventCltMod.testclt", 121))
 --         error(Return:new(nID))
 --     end)
 -- end
 
 -- function gmFuture()
 --     return coFuture(function()
---         local a = coYieldUnpack(trueGmFuture())
+--         local a = coyield(trueGmFuture())
 --     end)
 -- end
 
@@ -508,9 +505,19 @@ _G.coFuture = coFuture
 --     xxxx.load(function(data)
 --         oFuture.set_result(data)
 --     end)
---     local data = coYieldUnpack(oFuture)
+--     local data = coyield(oFuture)
 --     ...
 -- end
 
 -- 注意：服务端使用协程时不可以将玩家对象传入，会影响玩家下线是对象的卸载，这里提供了getWeakRefRole来获取玩家对象的弱引用
 --     每次异步后需要通过接口isWeakRefRoleExit判断玩家对象是否还存在
+
+-- 当有很多个异步同时运行时，需要使用waitMultiFuture来提升性能，具体使用示例如下：
+-- function()
+--     tFuture = {}
+--     for xxx in xxx do
+--         oFuture = func
+--         table.insert(tFuture, oFuture)
+--     end
+--     tData = coyield(waitMultiFuture(tFuture))
+-- end
